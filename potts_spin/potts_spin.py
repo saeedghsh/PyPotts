@@ -8,15 +8,16 @@ def convert_to_doubly_stochastic (mat, max_itr=10, verbose=False):
     alternately rescale all rows and all columns of A to sum to 1.
     '''
     for _ in range(max_itr):
-        mat /= np.stack([ mat.sum(axis=1) for _ in range(mat.shape[0])], axis=1)
-        mat /= np.stack([ mat.sum(axis=0) for _ in range(mat.shape[0])], axis=0)
+        vect = mat.sum(axis=1)
+        mat /= np.stack([ vect for _ in range(mat.shape[0])], axis=1)
+        vect = mat.sum(axis=0)
+        mat /= np.stack([ vect for _ in range(mat.shape[0])], axis=0)
         
     if verbose:
         print('sum of cols:'), print(mat.sum(axis=0))
         print('sum of rows:'), print(mat.sum(axis=1))
 
     return mat
-
 
 ################################################################################
 def get_E_loop(P, m, n):
@@ -30,7 +31,14 @@ def get_E_loop(P, m, n):
 
     ## E_loop
     Y = P.T / np.stack([np.diag(P) for _ in range(ndim)], axis=1)
-    E_loop = Y / np.where(np.abs(1-Y) < np.spacing(1), np.spacing(1), 1-Y )
+
+    # with np.errstate(divide='raise'):
+    #     try:
+    #         a = np.abs(1-Y) < np.spacing(1)
+    #     except FloatingPointError:
+    #         print( np.abs(1-Y) )
+
+    E_loop = Y / np.where(np.abs(1-Y) < np.spacing(10), np.spacing(10), 1-Y )
 
     return E_loop
 
@@ -99,45 +107,55 @@ def update_V_synchronous (E_local, kt, m, n, dsm_max_itr=20):
     updates all entries of the V matrix at the same time
     '''
     ## dimensions of different matrices
-    ndim, rdim = 2*m+n, m+n 
+    ndim, rdim = 2*m+n, m+n
 
-    ## Update V - Sync
-    V_u = np.exp( - E_local / kt )[:rdim, m:]
-    V_u /= np.stack([ V_u.sum(axis=1) for _ in range(rdim)], axis=1)
+    ## Update V Sync 
+    v_upd = np.exp( - E_local[:rdim, m:] / kt ) # crop the matrix (remove zeros)
+
+    ## the following normalization is redundant
+    ## it is merely one step of the "convert_to_doubly_stochastic"
+    # vect = v_upd.sum(axis=1) # denomintor for normalization
+    # v_upd /= np.stack([ vect for _ in range(rdim)], axis=1) # normalize the V
 
     ## convert the V matrix to a doubly stochastic matrix
-    V_u = convert_to_doubly_stochastic (V_u, max_itr=dsm_max_itr)
+    v_dsm = convert_to_doubly_stochastic (v_upd, max_itr=dsm_max_itr)
 
     ## reconstruct the original shape of the V, from (rdim,rdim) to (ndim, ndim)
-    V_r = np.zeros((ndim, ndim))
-    V_r[:rdim, m:] = V_u
+    v_res = np.zeros((ndim, ndim))
+    v_res[:rdim, m:] = v_dsm
     
-    return V_r
+    return v_res
 
 ################################################################################
-def update_V_asynchronous (E_local, kt, m, n, normalization_max_itr=20):
+def update_V_asynchronous (V_in, T, D, gamma, kt, m, n, dsm_max_itr=20):
     '''
     Updates the V matrix only one row/col at a time
     '''
     ## dimensions of different matrices
     ndim, rdim = 2*m+n, m+n 
 
-    ## Updated V 
-    V_u = np.exp( - E_local / kt )[:rdim, m:]
-    V_u /= np.stack([ V_u.sum(axis=1) for _ in range(rdim)], axis=1)
-    # print ('sum of columns:', V_u.sum(axis=0), '\n sum of rows:', V_u.sum(axis=1))
-    
-    ## convert the V matrix to a doubly stochastic matrix
-    V_u = convert_to_doubly_stochastic (V_u, max_itr=dsm_max_itr)
+    V = V_in.copy()
 
-    ## reconstruct the original shape of the V, from (rdim,rdim) to (ndim, ndim)
-    V_r = np.zeros((ndim, ndim))
-    V_r[:rdim, m:] = V_u
+    for col_idx in range(m,ndim):
+        # E_local, _, _ = get_E_local(V, T, D, gamma, m, n)
+        # if randomness: col_idx = np.random.randint(m, ndim)
+        V[:rdim, col_idx] = np.exp( - E_local[:rdim, col_idx] / kt )
+        
+        ## convert the V matrix to a doubly stochastic matrix
+        V = convert_to_doubly_stochastic (V, max_itr=dsm_max_itr)
+        
+    for row_idx in range(0, rdim):
+        # E_local, _, _ = get_E_local(V, T, D, gamma, m, n)
+        # if randomness: row_idx = np.random.randint(0, rdim)
+        V[row_idx, m:] = np.exp( - E_local[row_idx, m:] / kt )
+
+        ## convert the V matrix to a doubly stochastic matrix
+        V = convert_to_doubly_stochastic (V, max_itr=dsm_max_itr)
     
-    return V_r
+    return V
 
 ################################################################################
-def main(KT, T, D, gamma, m, n, dsm_max_itr, verbose=True):
+def main(KT, T, D, gamma, m, n, dsm_max_itr, synchronous=True, verbose=True):
     '''
     Input:
     m: int scalar                   -- number of vehicles
@@ -165,11 +183,20 @@ def main(KT, T, D, gamma, m, n, dsm_max_itr, verbose=True):
     V_log[0,   : , :m] = 0
     V_log[0, -m: , : ] = 0
 
-    ## the main loop    
-    for itr, kt in enumerate(KT):
-        if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
-        E_local, _, _ = get_E_local(V_log[itr,:,:], T, D, gamma, m, n)
-        V_log[itr+1,:,:] = update_V_synchronous (E_local, kt, m, n, dsm_max_itr=dsm_max_itr)
+    if synchronous:
+        print ('synchronous mode')
+        for itr, kt in enumerate(KT):
+            if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
+            E_local, _, _ = get_E_local(V_log[itr,:,:], T, D, gamma, m, n)
+            V_log[itr+1,:,:] = update_V_synchronous (E_local, kt, m, n, dsm_max_itr=dsm_max_itr)
+
+    else:
+        print ('asynchronous mode')
+        for itr, kt in enumerate(KT):
+            if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
+            # E_local, _, _ = get_E_local(V_log[itr,:,:], T, D, gamma, m, n)
+            # V_log[itr+1,:,:] = update_V_asynchronous (V_log[itr,:,:], E_local, kt, m, n, dsm_max_itr=dsm_max_itr)
+            V_log[itr+1,:,:] = update_V_asynchronous (V_log[itr,:,:], T, D, gamma, kt, m, n, dsm_max_itr=dsm_max_itr)
 
     return V_log
 

@@ -20,11 +20,47 @@ np.set_printoptions(suppress=True) # to print in non-scientific mode
 ################################################################################
 ############################################################### Functions' Lobby
 ################################################################################
+# row_idx=None
+# E_local,_,_ = potts_spin.get_E_local(V_log[-1,:,:], T, D, gamma, m, n)
+# kt = KT[-1]
+
+# ## dimensions of different matrices
+# ndim, rdim = 2*m+n, m+n 
+
+# ## if row index is not specified, pick a random row
+# if row_idx is None: row_idx = np.random.randint(0, rdim)
+
+# ## Update V - one row
+# val = np.exp( - E_local[row_idx, m:] / kt ).sum()
+
+
+# ## convert the V matrix to a doubly stochastic matrix
+# v_dsm = convert_to_doubly_stochastic (v_upd, max_itr=dsm_max_itr)
+
+# ## reconstruct the original shape of the V, from (rdim,rdim) to (ndim, ndim)
+# v_res = np.zeros((ndim, ndim))
+# v_res[:rdim, m:] = v_dsm
+
+
 
 
 ################################################################################
 ############################################################### Development Yard
 ################################################################################
+'''
+TODO:
+> asynchronous update does not work
+
+> try variations of asynchronous update:
+>>> do/don't update E_local at each iteration
+>>> do/don't randomly select row/col
+>>> do/don't update kt after each row/col
+
+> log E_local, E_task, E_loop and plot?
+
+> how to animate the result (potts-pin-ann) in a meaningful way?
+
+'''
 
 ##### parameters
 gamma = 100 # coefficient of loop cost (E_loop)
@@ -52,13 +88,16 @@ if 0:
     D = np.loadtxt('delta_mats/deltaMat_3_6.txt', dtype=float, ndmin=2) # (delta) [transport] cost matrix
     T = np.array([0, 0, 0, 438, 599, 300, 421, 347, 557, 0, 0 , 0]) # time for [doing] each task
 
+ndim, rdim = 2*m+n, m+n
+
+KT = KT[:500]
 ##### execution
 print('process started...')
 pr = cProfile.Profile()
 pr.enable()
 
 tic = time.time()
-V_log = potts_spin.main(KT, T, D, gamma, m, n, dsm_max_itr, verbose=True)
+V_log = potts_spin.main(KT, T, D, gamma, m, n, dsm_max_itr, synchronous=1, verbose=1)
 elapsed_time = time.time()-tic
 
 pr.disable()
@@ -66,7 +105,7 @@ s = StringIO.StringIO()
 ps = pstats.Stats(pr, stream=s).sort_stats(['filename','cumulative'][0])
 ps.print_stats()
 
-print (s.getvalue())
+# print (s.getvalue())
 
 ##### print results
 print('{:d} iterations in {:.2f} seconds'.format(len(KT), elapsed_time))
@@ -75,7 +114,7 @@ print('{:d} iterations in {:.2f} seconds'.format(len(KT), elapsed_time))
 ################################################################################
 ########################################################## Visualization Gallery
 ################################################################################
-if 0:
+if 1:
     ### skip in plotting V matrix to lighten the canvas
     skp = 100
     
@@ -84,11 +123,11 @@ if 0:
 
     ### set title
     ttl = 'vehicles:{:d} - tasks:{:d}'.format(m,n)
+    ttl += ' -- {:d} iterations in {:.2f} seconds'.format(len(KT), elapsed_time)
     ttl += '\n KT:(start:{:d}, step:{:.4f}, end:{:.4f})'.format(kT_start,kT_step,kT_end)
-    ttl += '\n iterations:{:d}'.format(len(KT))
-    ttl += '\n gamma:{:d}'.format(gamma)
-    ttl += '\n normalization iteration:{:d}'.format(dsm_itr_max)
-    ttl += '\n time elapsed: {:.2f} seconds'.format(elapsed_time)
+    ttl += ' -- gamma:{:d}'.format(gamma)
+    ttl += ' -- normalization iteration:{:d}'.format(dsm_max_itr)
+
     axes[0].set_title(ttl)
     
     ### plot temprature
@@ -106,7 +145,7 @@ if 0:
     row_err = [np.abs( np.ones(rdim) - V_log[itr,:rdim, m:].sum(axis=1) ).sum() for itr in range(V_log.shape[0])]
     axes[2].plot(col_err, 'r', label='column error')
     axes[2].plot(row_err, 'b', label='row error')
-    axes[2].set_ylabel('normalization error')
+    axes[2].set_ylabel('normalization error\n (Doubly stochastic matrix)')
     axes[2].legend()
 
     ### drawing - saving
