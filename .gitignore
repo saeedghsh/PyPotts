@@ -25,6 +25,7 @@
 
 *.tex.backup
 *~
+.dropbox
 
 dev/
 extras/
