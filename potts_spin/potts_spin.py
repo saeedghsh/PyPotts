@@ -43,7 +43,7 @@ def get_E_loop(P, m, n):
     return E_loop
 
 ################################################################################
-def get_E_task(V, T, D, P, m, n):
+def get_E_task(D, T, m, n, V, P):
     '''
     V: float 2darray (square 2xM+N) -- ordering of task
     T: float 1darray (2xM+N)        -- time for [doing] each task
@@ -73,7 +73,7 @@ def get_E_task(V, T, D, P, m, n):
 
 
 ################################################################################
-def get_E_local(V, T, D, gamma, m, n):
+def get_E_local(D, T, m, n, gamma, V):
     '''
     V: float 2darray (square 2xM+N) -- ordering of task
     T: float 1darray (2xM+N)        -- time for [doing] each task
@@ -94,7 +94,7 @@ def get_E_local(V, T, D, gamma, m, n):
     E_loop = get_E_loop(P, m, n)
 
     ## E_task
-    E_task = get_E_task(V, T, D, P, m, n)
+    E_task = get_E_task(D, T, m, n, V, P)
 
     ## E_local
     E_local  = E_task + gamma * E_loop
@@ -102,12 +102,15 @@ def get_E_local(V, T, D, gamma, m, n):
     return E_local, E_task, E_loop
     
 ################################################################################
-def update_V_synchronous (E_local, kt, m, n, dsm_max_itr=20):
+def update_V_synchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
     '''
     updates all entries of the V matrix at the same time
     '''
     ## dimensions of different matrices
     ndim, rdim = 2*m+n, m+n
+
+    ## get E_local
+    E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
 
     ## Update V Sync 
     v_upd = np.exp( - E_local[:rdim, m:] / kt ) # crop the matrix (remove zeros)
@@ -127,35 +130,46 @@ def update_V_synchronous (E_local, kt, m, n, dsm_max_itr=20):
     return v_res
 
 ################################################################################
-def update_V_asynchronous (V_in, T, D, gamma, kt, m, n, dsm_max_itr=20):
+def update_V_asynchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
     '''
     Updates the V matrix only one row/col at a time
     '''
     ## dimensions of different matrices
     ndim, rdim = 2*m+n, m+n 
 
-    V = V_in.copy()
+    ##    
+    E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
 
     for col_idx in range(m,ndim):
-        # E_local, _, _ = get_E_local(V, T, D, gamma, m, n)
+        # E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
         # if randomness: col_idx = np.random.randint(m, ndim)
         V[:rdim, col_idx] = np.exp( - E_local[:rdim, col_idx] / kt )
         
         ## convert the V matrix to a doubly stochastic matrix
-        V = convert_to_doubly_stochastic (V, max_itr=dsm_max_itr)
+        # print ('col_idx {:d} before dsm: '.format(col_idx), np.any(np.isnan(V)) )
+        v_crp = V[:rdim, m:]
+        v_dsm = convert_to_doubly_stochastic (v_crp, max_itr=dsm_max_itr)
+        V = np.zeros((ndim, ndim))
+        V[:rdim, m:] = v_dsm
+        # print ('col_idx {:d} after dsm: '.format(col_idx), np.any(np.isnan(V)) )
         
     for row_idx in range(0, rdim):
-        # E_local, _, _ = get_E_local(V, T, D, gamma, m, n)
+        # E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
         # if randomness: row_idx = np.random.randint(0, rdim)
         V[row_idx, m:] = np.exp( - E_local[row_idx, m:] / kt )
 
         ## convert the V matrix to a doubly stochastic matrix
-        V = convert_to_doubly_stochastic (V, max_itr=dsm_max_itr)
+        # print ('row_idx {:d} before dsm: '.format(row_idx), np.any(np.isnan(V)) )
+        v_crp = V[:rdim, m:]
+        v_dsm = convert_to_doubly_stochastic (v_crp, max_itr=dsm_max_itr)
+        V = np.zeros((ndim, ndim))
+        V[:rdim, m:] = v_dsm
+        # print ('row_idx {:d} after dsm: '.format(row_idx), np.any(np.isnan(V)) )
     
     return V
 
 ################################################################################
-def main(KT, T, D, gamma, m, n, dsm_max_itr, synchronous=True, verbose=True):
+def main(D, T, m, n, config, verbose=True):
     '''
     Input:
     m: int scalar                   -- number of vehicles
@@ -168,13 +182,19 @@ def main(KT, T, D, gamma, m, n, dsm_max_itr, synchronous=True, verbose=True):
     gamma: int                      -- coefficient of loop cost (E_loop)
     dsm_max_itr = 50 # number of iteration in conversion to doubly stochastic matric
 
-    Output:
+    Output: V_log
     stack of V matrices, where;
     V: float 2darray (square 2xM+N) -- ordering of task
     '''
     ## dimensions of different matrices
     ndim, rdim = 2*m+n, m+n 
     
+    ## termal setting
+    KT = [ config['kT_start'] ]
+    while KT[-1] > config['kT_end']: KT.append( KT[-1] * config['kT_step'] )
+
+    # if not config['synchronous']: KT = KT[:100]
+
     ## Creating a stack of V matrices
     V_log = np.empty([len(KT)+1, ndim, ndim], dtype=float)
     
@@ -183,21 +203,18 @@ def main(KT, T, D, gamma, m, n, dsm_max_itr, synchronous=True, verbose=True):
     V_log[0,   : , :m] = 0
     V_log[0, -m: , : ] = 0
 
-    if synchronous:
-        print ('synchronous mode')
-        for itr, kt in enumerate(KT):
-            if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
-            E_local, _, _ = get_E_local(V_log[itr,:,:], T, D, gamma, m, n)
-            V_log[itr+1,:,:] = update_V_synchronous (E_local, kt, m, n, dsm_max_itr=dsm_max_itr)
+    ## synchronous VS. asynchronous
+    update_V = update_V_synchronous if config['synchronous'] else update_V_asynchronous
+    print ('synchronous mode' if config['synchronous'] else 'asynchronous mode')
 
-    else:
-        print ('asynchronous mode')
-        for itr, kt in enumerate(KT):
-            if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
-            # E_local, _, _ = get_E_local(V_log[itr,:,:], T, D, gamma, m, n)
-            # V_log[itr+1,:,:] = update_V_asynchronous (V_log[itr,:,:], E_local, kt, m, n, dsm_max_itr=dsm_max_itr)
-            V_log[itr+1,:,:] = update_V_asynchronous (V_log[itr,:,:], T, D, gamma, kt, m, n, dsm_max_itr=dsm_max_itr)
+    ## the main loop
+    for itr, kt in enumerate(KT):
+        if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
+
+        V_log[itr+1,:,:] = update_V (D, T, m, n, config['gamma'], V_log[itr,:,:], kt, config['dsm_max_itr'])
+
+        if np.any(np.isnan(V_log[itr+1,:,:])) or np.any(np.isinf(V_log[itr+1,:,:])):
+            print('*** NOTE *** : process stopped at iteration {:d}, a NAN/INF appeared in V_log'.format(itr))
+            break
 
     return V_log
-
-
