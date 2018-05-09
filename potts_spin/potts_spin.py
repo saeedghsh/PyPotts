@@ -1,3 +1,21 @@
+'''
+Copyright (C) Saeed Gholami Shahbandi. All rights reserved.
+Author: Saeed Gholami Shahbandi
+
+This file is part of Arrangement Library.
+The of Arrangement Library is free software: you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public License as published
+by the Free Software Foundation, either version 3 of the License,
+or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along
+with this program. If not, see <http://www.gnu.org/licenses/>
+'''
+
 from __future__ import print_function
 import numpy as np
 
@@ -61,13 +79,39 @@ def get_E_task(D, T, m, n, V, P):
     R = np.matmul( P , T+np.diag(np.matmul(V,D.T)) )
     kappa = (L.max() + R.max()) *.5
 
-    E_task = ( D + np.stack([L for _ in range(ndim)], axis=1) ) * np.stack([P[:,rdim:].sum(axis=1) for _ in range(ndim)], axis=0)
-    E_task += ( D + np.stack([R for _ in range(ndim)], axis=1) ) * np.stack([P[:m,:].sum(axis=0) for _ in range(ndim)], axis=1) 
-    E_task /= 2 * m * kappa
+    # E_task = ( D + np.stack([L for _ in range(ndim)], axis=1) ) * np.stack([P[:,rdim:].sum(axis=1) for _ in range(ndim)], axis=0)
+    # E_task += ( D + np.stack([R for _ in range(ndim)], axis=1) ) * np.stack([P[:m,:].sum(axis=0) for _ in range(ndim)], axis=1) 
+    # E_task /= 2 * m * kappa
+
+    if 0:
+        ## summation 
+        left_side = D + np.stack([L for _ in range(ndim)], axis=1)
+        left_side *= np.stack([P[:,rdim:].sum(axis=1) for _ in range(ndim)], axis=0)
+
+        right_side = D + np.stack([R for _ in range(ndim)], axis=1)
+        right_side *= np.stack([P[:m,:].sum(axis=0) for _ in range(ndim)], axis=1) 
+
+
+    else:
+        ## maximum
+        left_side = D + np.stack([L for _ in range(ndim)], axis=1)
+        x = rdim + np.argmax(L[rdim:])
+        # print (P[:,x])
+        left_side *= np.stack([P[:,x] for _ in range(ndim)], axis=0)
+
+        right_side = D + np.stack([R for _ in range(ndim)], axis=1)
+        y = np.argmax(R[:m])
+        # print (P[y,:])
+        right_side *= np.stack([P[y,:] for _ in range(ndim)], axis=1) 
+
+
+    E_task = (left_side + right_side) / (2 * m * kappa)
 
     E_task[:,:m] = 1/np.spacing(1)
     E_task[rdim:,:] = 1/np.spacing(1)
     E_task[:m,rdim:] = 1/np.spacing(1)
+
+    # print (E_task)
 
     return E_task
 
@@ -102,7 +146,7 @@ def get_E_local(D, T, m, n, gamma, V):
     return E_local, E_task, E_loop
     
 ################################################################################
-def update_V_synchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
+def update_V_synchronous (D, T, m, n, config, V, kt):
     '''
     updates all entries of the V matrix at the same time
     '''
@@ -110,7 +154,7 @@ def update_V_synchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
     ndim, rdim = 2*m+n, m+n
 
     ## get E_local
-    E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
+    E_local, _, _ = get_E_local(D, T, m, n, config['gamma'], V)
 
     ## Update V Sync 
     v_upd = np.exp( - E_local[:rdim, m:] / kt ) # crop the matrix (remove zeros)
@@ -121,7 +165,7 @@ def update_V_synchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
     # v_upd /= np.stack([ vect for _ in range(rdim)], axis=1) # normalize the V
 
     ## convert the V matrix to a doubly stochastic matrix
-    v_dsm = convert_to_doubly_stochastic (v_upd, max_itr=dsm_max_itr)
+    v_dsm = convert_to_doubly_stochastic (v_upd, max_itr=config['dsm_max_itr'])
 
     ## reconstruct the original shape of the V, from (rdim,rdim) to (ndim, ndim)
     v_res = np.zeros((ndim, ndim))
@@ -130,55 +174,128 @@ def update_V_synchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
     return v_res
 
 ################################################################################
-def update_V_asynchronous (D, T, m, n, gamma, V, kt, dsm_max_itr=20):
-    '''
-    Updates the V matrix only one row/col at a time
-    '''
+def update_V_col (V, E_local, m, n, kt, col_idx, dsm_max_itr=20):
+    ''''''
     ## dimensions of different matrices
     ndim, rdim = 2*m+n, m+n 
 
-    ##    
-    E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
+    ## update V - one column
+    V[:rdim, col_idx] = np.exp( - E_local[:rdim, col_idx] / kt )
+    
+    ## convert the V matrix to a doubly stochastic matrix
+    v_crp = V[:rdim, m:]
+    v_dsm = convert_to_doubly_stochastic (v_crp, max_itr=dsm_max_itr)
+    V = np.zeros((ndim, ndim))
+    V[:rdim, m:] = v_dsm
 
+    return V
+
+
+
+################################################################################
+def update_V_row (V, E_local, m, n, kt, row_idx, dsm_max_itr=20):
+    ''''''
+    ## dimensions of different matrices
+    ndim, rdim = 2*m+n, m+n 
+
+    ## update V - one row
+    V[row_idx, m:] = np.exp( - E_local[row_idx, m:] / kt )
+
+    ## convert the V matrix to a doubly stochastic matrix
+    v_crp = V[:rdim, m:]
+    v_dsm = convert_to_doubly_stochastic (v_crp, max_itr=dsm_max_itr)
+    V = np.zeros((ndim, ndim))
+    V[:rdim, m:] = v_dsm
+
+    return V
+
+################################################################################
+def update_V_asynchronous (D, T, m, n, config, V_in, kt):
+    '''
+    Updates the V matrix only one row/col at a time
+    '''
+
+    ## dimensions of different matrices
+    ndim, rdim = 2*m+n, m+n 
+
+    ##
+    update_E_local_per_row_col = config['update_E_local_per_row_col']
+    select_row_col_randomly = config['select_row_col_randomly']
+
+    # need to copy, because V passed to this method is from [itr] and it should not
+    # change, but an updated version should be returned to be stored in [itr+1][itr] 
+    V = V_in.copy()
+
+    ##
+    if not update_E_local_per_row_col:
+        E_local, _, _ = get_E_local(D, T, m, n, config['gamma'], V)
+
+    ## 
     for col_idx in range(m,ndim):
-        # E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
-        # if randomness: col_idx = np.random.randint(m, ndim)
-        V[:rdim, col_idx] = np.exp( - E_local[:rdim, col_idx] / kt )
-        
-        ## convert the V matrix to a doubly stochastic matrix
-        # print ('col_idx {:d} before dsm: '.format(col_idx), np.any(np.isnan(V)) )
-        v_crp = V[:rdim, m:]
-        v_dsm = convert_to_doubly_stochastic (v_crp, max_itr=dsm_max_itr)
-        V = np.zeros((ndim, ndim))
-        V[:rdim, m:] = v_dsm
-        # print ('col_idx {:d} after dsm: '.format(col_idx), np.any(np.isnan(V)) )
+
+        if update_E_local_per_row_col: E_local, _, _ = get_E_local(D, T, m, n, config['gamma'], V)
+        if select_row_col_randomly: col_idx = np.random.randint(m, ndim)
+
+        V = update_V_col (V, E_local, m, n, kt, col_idx, config['dsm_max_itr'])
         
     for row_idx in range(0, rdim):
-        # E_local, _, _ = get_E_local(D, T, m, n, gamma, V)
-        # if randomness: row_idx = np.random.randint(0, rdim)
-        V[row_idx, m:] = np.exp( - E_local[row_idx, m:] / kt )
 
-        ## convert the V matrix to a doubly stochastic matrix
-        # print ('row_idx {:d} before dsm: '.format(row_idx), np.any(np.isnan(V)) )
-        v_crp = V[:rdim, m:]
-        v_dsm = convert_to_doubly_stochastic (v_crp, max_itr=dsm_max_itr)
-        V = np.zeros((ndim, ndim))
-        V[:rdim, m:] = v_dsm
-        # print ('row_idx {:d} after dsm: '.format(row_idx), np.any(np.isnan(V)) )
+        if update_E_local_per_row_col: E_local, _, _ = get_E_local(D, T, m, n, config['gamma'], V)
+        if select_row_col_randomly: row_idx = np.random.randint(0, rdim)
+
+        V = update_V_row (V, E_local, m, n, kt, row_idx, config['dsm_max_itr'])
     
     return V
 
 ################################################################################
-def main(D, T, m, n, config, verbose=True):
+def update_V_asynchronous_beta (D, T, m, n, config, V_log, KT):
+    '''
+    Updates the V matrix only one row/col at a time
+
+    updates E_local at each iteration
+    selects row/col randomly
+    updates kt after each row/col
+    '''
+
+    ## dimensions of different matrices
+    ndim, rdim = 2*m+n, m+n 
+
+    for itr, kt in enumerate(KT):
+        if itr%500==0: print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
+
+        E_local, _, _ = get_E_local(D, T, m, n, config['gamma'], V_log[itr, :, :])
+        
+        V = V_log[itr, :, :].copy()
+
+        if np.random.rand() > .5:
+            col_idx = np.random.randint(m, ndim)
+            V_log[itr+1, :, :] = update_V_col (V, E_local, m, n, kt, col_idx, config['dsm_max_itr'])
+        else:
+            row_idx = np.random.randint(0, rdim)
+            V_log[itr+1, :, :] = update_V_row (V, E_local, m, n, kt, row_idx, config['dsm_max_itr'])
+
+        if np.any(np.isnan(V_log[itr+1,:,:])):
+            print('*** NOTE *** : process stopped at iteration {:d}, a NAN appeared in V_log'.format(itr))
+            break
+        if np.any(np.isinf(V_log[itr+1,:,:])):
+            print('*** NOTE *** : process stopped at iteration {:d}, a INF appeared in V_log'.format(itr))
+            break
+   
+    return V_log
+
+
+################################################################################
+def main(D, T, m, n, config):
     '''
     Input:
-    m: int scalar                   -- number of vehicles
-    n: int scalar                   -- number of tasks
     D: float 2darray (square 2xM+N) -- (delta) [transport] cost matrix
     T: float 1darray (2xM+N)        -- time for [doing] each task
+    m: int scalar                   -- number of vehicles
+    n: int scalar                   -- number of tasks
+
     
     Parameters:
-    kT: float start, step , end     -- temprature of the system
+    kT: float start, step , end     -- temperature of the system
     gamma: int                      -- coefficient of loop cost (E_loop)
     dsm_max_itr = 50 # number of iteration in conversion to doubly stochastic matric
 
@@ -203,18 +320,36 @@ def main(D, T, m, n, config, verbose=True):
     V_log[0,   : , :m] = 0
     V_log[0, -m: , : ] = 0
 
-    ## synchronous VS. asynchronous
-    update_V = update_V_synchronous if config['synchronous'] else update_V_asynchronous
-    print ('synchronous mode' if config['synchronous'] else 'asynchronous mode')
+    ## Execution
+    if (not config['synchronous']) and config['update_temperature_after_each_row_col']:
+        ## asynchronous
+        # - update temperature after each row_col
+        # - randomly select row or column, and their indices
+        # - update E_local once before updating each row or column
+        print ('asynchronous mode - temperature after each row or column')
+        V_log = update_V_asynchronous_beta (D, T, m, n, config, V_log, KT)
 
-    ## the main loop
-    for itr, kt in enumerate(KT):
-        if (verbose and itr%500==0): print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
+    else:
+        ## synchronous and asynchronous
+        update_V = update_V_synchronous if config['synchronous'] else update_V_asynchronous
+        print ('synchronous mode' if config['synchronous'] else 'asynchronous mode')
 
-        V_log[itr+1,:,:] = update_V (D, T, m, n, config['gamma'], V_log[itr,:,:], kt, config['dsm_max_itr'])
+        ## the main loop
+        for itr, kt in enumerate(KT):
+            if (config['verbose'] and itr%config['verbose']==0):
+                print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
 
-        if np.any(np.isnan(V_log[itr+1,:,:])) or np.any(np.isinf(V_log[itr+1,:,:])):
-            print('*** NOTE *** : process stopped at iteration {:d}, a NAN/INF appeared in V_log'.format(itr))
-            break
+            V_log[itr+1,:,:] = update_V (D, T, m, n, config, V_log[itr,:,:], kt)
 
+            
+            if np.any(np.isnan(V_log[itr+1,:,:])):
+                print('*** NOTE *** : process stopped at iteration {:d}, a NAN appeared in V_log'.format(itr))
+                break
+            if np.any(np.isinf(V_log[itr+1,:,:])):
+                print('*** NOTE *** : process stopped at iteration {:d}, a INF appeared in V_log'.format(itr))
+                break
+                
+    
     return V_log
+
+
