@@ -1,13 +1,13 @@
 # PyPotts
-Neural Netork based on Potts Spin.
+Task Assignment with Neural Network based on Potts Spin.
 
 <p align="center">
-	<img src="https://github.com/saeedghsh/arrangement/PyPotts/master/docs/animation.gif" width="400">
+	<img src="https://github.com/saeedghsh/PyPotts/master/docs/animation.gif" width="400">
 </p>
 
 The method is a *Neural Netork based on Potts Spin* for the task assignment problem.
 The [original implementation](https://github.com/jenniferdavid/potts_spin) is by [Jennifer David](https://github.com/jenniferdavid) and in C++.
-I implemented this is a python version under the supervision of [Jennifer David](https://github.com/jenniferdavid).
+I implemented this is a python version under the supervision of Jennifer David.
 
 # Dependencies and Download
 Download, installing dependencies, and install package
@@ -35,9 +35,8 @@ $ cd scripts/
 $ python parse_V_mat.py --fname '../sample_data/3_6_Vmat__.txt' --m 3 --n 6 -verbose -visualize
 ```
 
-
 # Laundry List
-- [ ] The method is under developement! coordinate the update, developement, and debugging of the code with Jennifer.
+- [ ] The method is under developement! coordinate the update, developement, and debugging of the code with Jennifer David.
 - [ ] Add a script to just check the validity of the V matrix, and if it is not valid, print what exactly is the problem.
 - [ ] store the history of `V`, `E_task`, `P`, `R`, `L` in `.txt`.
 - [ ] Add documentation and API examples.
