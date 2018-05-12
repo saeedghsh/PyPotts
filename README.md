@@ -2,12 +2,12 @@
 Task Assignment with Neural Network based on Potts Spin.
 
 <p align="center">
-	<img src="https://github.com/saeedghsh/PyPotts/master/docs/animation.gif" width="400">
+	<img src="https://github.com/saeedghsh/PyPotts/blob/master/docs/animation.gif" width="400">	
 </p>
 
 The method is a *Neural Netork based on Potts Spin* for the task assignment problem.
 The [original implementation](https://github.com/jenniferdavid/potts_spin) is by [Jennifer David](https://github.com/jenniferdavid) and in C++.
-I implemented this is a python version under the supervision of Jennifer David.
+I implemented this Python version under the supervision of Jennifer David.
 
 # Dependencies and Download
 Download, installing dependencies, and install package
@@ -17,10 +17,10 @@ $ git clone https://github.com/saeedghsh/PyPotts.git
 $ cd PyPotts
 
 # Install dependencies
-$ pip install -r requirements.txt # python 2
+$ pip install -r requirements.txt
 
 # Install the package [optional]
-python setup.py install # python 2
+python setup.py install
 ```
 
 # Basic Use and API
@@ -29,7 +29,7 @@ python setup.py install # python 2
 $ not available yet...
 ```
 
-* Parsing the V matrix (the assignments):
+* Parsing the `V` matrix (the assignments):
 ```shell
 $ cd scripts/
 $ python parse_V_mat.py --fname '../sample_data/3_6_Vmat__.txt' --m 3 --n 6 -verbose -visualize
@@ -42,8 +42,7 @@ $ python parse_V_mat.py --fname '../sample_data/3_6_Vmat__.txt' --m 3 --n 6 -ver
 - [ ] Add documentation and API examples.
 
 # License
-Distributed with a GNU GENERAL PUBLIC LICENSE;
-see [LICENSE](https://github.com/saeedghsh/arrangement/blob/master/LICENSE).
+Distributed with a GNU GENERAL PUBLIC LICENSE; see [LICENSE](https://github.com/saeedghsh/arrangement/blob/master/LICENSE).
 ```
 Copyright (C) Saeed Gholami Shahbandi
 ```
