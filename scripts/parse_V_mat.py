@@ -23,6 +23,7 @@ import time
 import numpy as np
 
 np.set_printoptions(precision=2) # pricision of float print
+np.set_printoptions(linewidth=150) # The number of characters per line for inserting line breaks (default = 80).
 np.set_printoptions(suppress=True) # to print in non-scientific mode
 
 import sys

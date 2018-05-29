@@ -31,6 +31,7 @@ reload(potts)
 reload(potplt)
 
 np.set_printoptions(precision=2) # pricision of float print
+np.set_printoptions(linewidth=150) # The number of characters per line for inserting line breaks (default = 80).
 np.set_printoptions(suppress=True) # to print in non-scientific mode
 
 ################################################################################
@@ -41,65 +42,16 @@ np.set_printoptions(suppress=True) # to print in non-scientific mode
 ################################################################################
 ############################################################### Development Yard
 ################################################################################
-'''
-TODO:
-> save V_log as txt file
-> log E_local, E_task, E_loop and plot?
-> how to animate the result (potts-pin-ann) in a meaningful way?
-'''
+
 
 ########################################
 ###################### Setting parameter
 ########################################
-config = {
-    # coefficient of loop cost (E_loop)
-    'gamma'                                 : 100,
+import method_config
+reload(method_config)
+config = method_config.config
+# print(config['gamma'])
 
-    # number of iteration in conversion to doubly stochastic matric
-    'dsm_max_itr'                           : 50,
-
-    # termal setting
-    'kT_start'                              : 100,
-    'kT_step'                               : .9990,
-    'kT_end'                                : .0010,
-
-    # E_task computation mode
-    # for detail see potts_spin.potts_spin.get_E_task()
-    'E_task_computation_mode'               : ['summation', 'maximum'][1],
-
-    # V update mode;
-    # synchronous mode - the V matrix is updated as a whole.
-    # asynchronous mode - the V matrix is updated one row or column at a time.
-    'synchronous'                           : [False, True][0],
-
-    # [asynchronous mode] row and columns could be updated;
-    # randomly - row or column, and their indices are selected randomly
-    # sequentially - first update columns one-by-one, then rows one-by-one
-    'select_row_col_randomly'               : [False, True][0],
-
-    # [asynchronous mode] [sequential updating] E_local could be updated;
-    # once before updating each row or column
-    # once for all rows and columns of a sequence (covering the whole matrix)
-    'update_E_local_per_row_col'            : [False, True][1],
-
-    # [asynchronous mode]
-    # This flag specifies whether the temprature (kt) should change after each
-    # row-col update.
-    # If this flag is True, row-column are selected randomly, and E_local is
-    # updated once before updating each row or column.
-    # That is to say, if this flag is True, the two previous flags are ignored
-    'update_temperature_after_each_row_col' : [False, True][1],
-
-    # how often print the current iteration (does not print if set to 0)
-    'verbose'                               : 500,
-}
-
-##### over-writting termal setting
-config['kT_start'], config['kT_step'], config['kT_end'] = [ (100, .9990, .0100),
-                                                            (100, .9995, .0100),
-                                                            (100, .9990, .0010),
-                                                            (100, .9990, .0001),
-                                                            (100, .9980, .0010) ][3] #[0]
 KT = [ config['kT_start'] ]
 while KT[-1] > config['kT_end']: KT.append( KT[-1] * config['kT_step'] )
 # print (len(KT))
@@ -112,7 +64,7 @@ if 1:
     D = np.loadtxt('sample_data/deltaMat_2_4.txt', dtype=float, ndmin=2) # (delta) [transport] cost matrix
     T = np.array([0, 0, 438, 399, 487, 507, 0 , 0]) # time for [doing] each task
     
-if 1:
+if 0:
     m, n = 3, 6 # vehicles, tasks
     D = np.loadtxt('sample_data/deltaMat_3_6.txt', dtype=float, ndmin=2) # (delta) [transport] cost matrix
     T = np.array([0, 0, 0, 438, 599, 300, 421, 347, 557, 0, 0 , 0]) # time for [doing] each task
@@ -159,6 +111,8 @@ if 0:
 ################################################################################
 ########################################################## Visualization Gallery
 ################################################################################
+
+
 
 ################################################################################
 #################################################################### TESTNG AREA

@@ -28,10 +28,13 @@ def convert_to_doubly_stochastic (mat, max_itr=10, verbose=False):
     alternately rescale all rows and all columns of A to sum to 1.
     '''
     for _ in range(max_itr):
-        vect = mat.sum(axis=1)
-        mat /= np.stack([ vect for _ in range(mat.shape[0])], axis=1)
-        vect = mat.sum(axis=0)
-        mat /= np.stack([ vect for _ in range(mat.shape[0])], axis=0)
+        # vect = mat.sum(axis=1)
+        # mat /= np.stack([ vect for _ in range(mat.shape[0])], axis=1)
+        mat /= np.stack( [mat.sum(axis=1)] * mat.shape[0], axis=1)
+                
+        # vect = mat.sum(axis=0)
+        # mat /= np.stack([ vect for _ in range(mat.shape[0])], axis=0)
+        mat /= np.stack( [mat.sum(axis=0)] * mat.shape[0], axis=0)
 
     if verbose:
         print('sum of cols:'), print(mat.sum(axis=0))
@@ -50,14 +53,8 @@ def get_E_loop(P, m, n):
     ndim, rdim = 2*m+n, m+n
 
     ## E_loop
-    Y = P.T / np.stack([np.diag(P) for _ in range(ndim)], axis=1)
-
-    # with np.errstate(divide='raise'):
-    #     try:
-    #         a = np.abs(1-Y) < np.spacing(1)
-    #     except FloatingPointError:
-    #         print( np.abs(1-Y) )
-
+    # Y = P.T / np.stack([np.diag(P) for _ in range(ndim)], axis=1)
+    Y = P.T / np.stack( [np.diag(P)] * ndim, axis=1)
     E_loop = Y / np.where(np.abs(1-Y) < np.spacing(10), np.spacing(10), 1-Y )
 
     return E_loop
@@ -82,21 +79,30 @@ def get_E_task(D, T, m, n, config, V, P):
     kappa = (L.max() + R.max()) *.5
 
     if config['E_task_computation_mode'] == 'summation':
-        left_side = D + np.stack([L for _ in range(ndim)], axis=1)
-        left_side *= np.stack([P[:,rdim:].sum(axis=1) for _ in range(ndim)], axis=0)
-
-        right_side = D + np.stack([R for _ in range(ndim)], axis=1)
-        right_side *= np.stack([P[:m,:].sum(axis=0) for _ in range(ndim)], axis=1)
-
+        # left_side = D + np.stack([L for _ in range(ndim)], axis=1)
+        # left_side *= np.stack([P[:,rdim:].sum(axis=1) for _ in range(ndim)], axis=0)
+        # right_side = D + np.stack([R for _ in range(ndim)], axis=1)
+        # right_side *= np.stack([P[:m,:].sum(axis=0) for _ in range(ndim)], axis=1)
+        left_side = D + np.stack( [L] * ndim, axis=1)
+        left_side *= np.stack( [P[:,rdim:].sum(axis=1)] * ndim, axis=0)
+        right_side = D + np.stack( [R] * ndim, axis=1)
+        right_side *= np.stack( [P[:m,:].sum(axis=0)] * ndim, axis=1)
+        
     elif config['E_task_computation_mode'] == 'maximum':
-        left_side = D + np.stack([L for _ in range(ndim)], axis=1)
+        # left_side = D + np.stack([L for _ in range(ndim)], axis=1)
+        # x = rdim + np.argmax(L[rdim:])
+        # left_side *= np.stack([P[:,x] for _ in range(ndim)], axis=0)
+        # right_side = D + np.stack([R for _ in range(ndim)], axis=1)
+        # y = np.argmax(R[:m])
+        # right_side *= np.stack([P[y,:] for _ in range(ndim)], axis=1)
+
+        left_side = D + np.stack( [L] * ndim, axis=1)
         x = rdim + np.argmax(L[rdim:])
-        left_side *= np.stack([P[:,x] for _ in range(ndim)], axis=0)
-
-        right_side = D + np.stack([R for _ in range(ndim)], axis=1)
+        left_side *= np.stack( [P[:,x]] * ndim, axis=0)
+        right_side = D + np.stack( [R] * ndim, axis=1)
         y = np.argmax(R[:m])
-        right_side *= np.stack([P[y,:] for _ in range(ndim)], axis=1)
-
+        right_side *= np.stack( [P[y,:]] * ndim, axis=1)
+        
     else:
         raise ('E_task_computation_mode is unidentifiable')
 
@@ -108,9 +114,8 @@ def get_E_task(D, T, m, n, config, V, P):
 
     return E_task
 
-
 ################################################################################
-def get_E_local(D, T, m, n, config, V):
+def get_E_all(D, T, m, n, config, V):
     '''
     V: float 2darray (square 2xM+N) -- ordering of task
     T: float 1darray (2xM+N)        -- time for [doing] each task
@@ -127,13 +132,9 @@ def get_E_local(D, T, m, n, config, V):
     ## P
     P = np.linalg.inv( np.identity(ndim) - V) # P: measures the presence of loop in V
 
-    ## E_loop
+    ## All Es
     E_loop = get_E_loop(P, m, n)
-
-    ## E_task
     E_task = get_E_task(D, T, m, n, config, V, P)
-
-    ## E_local
     E_local  = E_task + config['gamma'] * E_loop
 
     return E_local, E_task, E_loop
@@ -147,11 +148,13 @@ def update_V_synchronous (D, T, m, n, config, V, kt):
     ndim, rdim = 2*m+n, m+n
 
     ## get E_local
-    E_local, _, _ = get_E_local(D, T, m, n, config, V)
+    E_local, _, _ = get_E_all(D, T, m, n, config, V)
+    # E_local, E_task, E_loop = get_E_all(D, T, m, n, config, V)
 
     ## Update V Sync
     v_upd = np.exp( - E_local[:rdim, m:] / kt ) # crop the matrix (remove zeros)
 
+    ## TODO: 
     ## I think the following "normalization" is redundant
     ## it is merely one step of the "convert_to_doubly_stochastic"
     # vect = v_upd.sum(axis=1) # denomintor for normalization
@@ -164,6 +167,7 @@ def update_V_synchronous (D, T, m, n, config, V, kt):
     v_res = np.zeros((ndim, ndim))
     v_res[:rdim, m:] = v_dsm
 
+    # return v_res, E_local, E_task, E_loop
     return v_res
 
 ################################################################################
@@ -201,9 +205,15 @@ def update_V_row (V, E_local, m, n, kt, row_idx, dsm_max_itr=20):
     return V
 
 ################################################################################
-def update_V_asynchronous (D, T, m, n, config, V_in, kt):
+def update_V_asynchronous_batch (D, T, m, n, config, V_in, kt):
     '''
-    Updates the V matrix only one row/col at a time
+    Updates the V matrix only one row/col at a time.  BUT: all rows
+    and columns (the whole matrix) will be updated per each iteration,
+    hence the name batch.  the is unlike the other approach to
+    asynchronous version where a single row/column is updated per each
+    iteration (in that mode, the selection of row and columns could be
+    sequential or random)
+
     '''
     ## dimensions of different matrices
     ndim, rdim = 2*m+n, m+n
@@ -213,15 +223,20 @@ def update_V_asynchronous (D, T, m, n, config, V_in, kt):
     V = V_in.copy()
 
     if not config['update_E_local_per_row_col']:
-        E_local, _, _ = get_E_local(D, T, m, n, config, V)
+        E_local, _, _ = get_E_all(D, T, m, n, config, V)
+        # E_local, E_task, E_loop = get_E_all(D, T, m, n, config, V)
 
     for col_idx in range(m,ndim):
-        if config['update_E_local_per_row_col']: E_local, _, _ = get_E_local(D, T, m, n, config, V)
+        if config['update_E_local_per_row_col']:
+            E_local, _, _ = get_E_all(D, T, m, n, config, V)
+            # E_local, E_task, E_loop = get_E_all(D, T, m, n, config, V)
         if config['select_row_col_randomly']: col_idx = np.random.randint(m, ndim)
         V = update_V_col (V, E_local, m, n, kt, col_idx, config['dsm_max_itr'])
 
     for row_idx in range(0, rdim):
-        if config['update_E_local_per_row_col']: E_local, _, _ = get_E_local(D, T, m, n, config, V)
+        if config['update_E_local_per_row_col']:
+            E_local, _, _ = get_E_all(D, T, m, n, config, V)
+            # E_local, E_task, E_loop = get_E_all(D, T, m, n, config, V)
         if config['select_row_col_randomly']: row_idx = np.random.randint(0, rdim)
         V = update_V_row (V, E_local, m, n, kt, row_idx, config['dsm_max_itr'])
 
@@ -247,22 +262,45 @@ def update_V_asynchronous_beta (D, T, m, n, config, V_log, KT):
     for itr, kt in enumerate(KT):
         if itr%500==0: print ('iteration: {:d}/{:d}'.format(itr, len(KT)))
 
-        E_local, _, _ = get_E_local(D, T, m, n, config, V_log[itr, :, :])
-
+        E_local, _, _ = get_E_all(D, T, m, n, config, V_log[itr, :, :])
+        # E_local, E_task, E_loop = get_E_all(D, T, m, n, config, V_log[itr,:,:])
+	        
         V = V_log[itr, :, :].copy()
 
-        if np.random.rand() > .5:
-            col_idx = np.random.randint(m, ndim)
-            V_log[itr+1, :, :] = update_V_col (V, E_local, m, n, kt, col_idx, config['dsm_max_itr'])
-        else:
-            row_idx = np.random.randint(0, rdim)
-            V_log[itr+1, :, :] = update_V_row (V, E_local, m, n, kt, row_idx, config['dsm_max_itr'])
+	if config['select_row_col_randomly']:
+	    if np.random.rand() > .5:
+                col_idx = np.random.randint(m, ndim)
+            	V_log[itr+1, :, :] = update_V_col (V, E_local, m, n, kt, col_idx, config['dsm_max_itr'])
+            else:
+            	row_idx = np.random.randint(0, rdim)
+            	V_log[itr+1, :, :] = update_V_row (V, E_local, m, n, kt, row_idx, config['dsm_max_itr'])
+            	
+            	
+    	else:
+    	    # todo: this is new, double check
+    	    rc_idx = itr % (2*rdim)
+    	    if rc_idx < rdim:
+    	    	col_idx = rc_idx+m
+    	    	V_log[itr+1, :, :] = update_V_col (V, E_local, m, n, kt, col_idx, config['dsm_max_itr'])
+    	    else:
+    	    	row_idx = rc_idx - rdim
+    	    	V_log[itr+1, :, :] = update_V_row (V, E_local, m, n, kt, row_idx, config['dsm_max_itr'])    	    	
 
         if np.any(np.isnan(V_log[itr+1,:,:])) or np.any(np.isinf(V_log[itr+1,:,:])):
             print('*** NOTE *** : process stopped at iteration {:d}, a NAN/INF appeared in V_log'.format(itr))
             break
 
     return V_log, itr
+
+# m = 2
+# n = 4
+# ndim, rdim = 2*m+n, m+n
+# for itr in range(40):
+#     rc_idx = itr % (2*rdim)
+#     if rc_idx < rdim:
+# 	print ('column {:d}'.format(rc_idx+m))
+#     else:
+# 	print ('row {:d}'.format(rc_idx - rdim))
 
 ################################################################################
 def main(D, T, m, n, config):
@@ -311,7 +349,7 @@ def main(D, T, m, n, config):
 
     else:
         ## synchronous and asynchronous
-        update_V = update_V_synchronous if config['synchronous'] else update_V_asynchronous
+        update_V = update_V_synchronous if config['synchronous'] else update_V_asynchronous_batch
         print ('synchronous mode' if config['synchronous'] else 'asynchronous mode')
 
         ## the main loop
@@ -329,12 +367,27 @@ def main(D, T, m, n, config):
 
 
 
+
+
 ################################################################################
 #################################### Parsers and Validity checks of the V Matrix
+################################################################################
+class InvalidVMatrixError(Exception):
+    '''
+    Custom Error defined for invalid V matrix
+    '''
+    def __init__(self, msg):
+        self.msg = msg
+
 ################################################################################
 def is_V_mat_valid(V, m,n, V_thr=0.5):
     '''
     V matrix should be square and binary
+
+    TODO:
+    this function does not check for the loops
+    `parse_V_to_assignment` does...
+    how to include that simply here?
     '''
     ndim, rdim = 2*m+n, m+n
 
@@ -364,14 +417,6 @@ def is_V_mat_valid(V, m,n, V_thr=0.5):
     ]
 
     return False if any(problem) else True
-
-
-class InvalidVMatrixError(Exception):
-    '''
-    Custom Error defined for invalid V matrix
-    '''
-    def __init__(self, msg):
-        self.msg = msg
 
 ################################################################################
 def parse_V_to_assignment(V, m,n, V_thr=0.5):

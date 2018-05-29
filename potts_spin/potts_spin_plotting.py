@@ -174,9 +174,13 @@ def plot_V_KT_error (V_log, KT, m,n, config,
 ################################################################################
 ################################################################################
 ################################################################################
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.patches import FancyArrowPatch
-from mpl_toolkits.mplot3d import proj3d
+try:
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib.patches import FancyArrowPatch
+    from mpl_toolkits.mplot3d import proj3d
+except:
+    print ('3D vis is not available')    
+    class FancyArrowPatch(): pass
 
 ############# https://gist.github.com/jpwspicer/ea6d20e4d8c54e9daabbc1daabbdc027
 class Arrow3D(FancyArrowPatch):
