@@ -46,7 +46,7 @@ config = {
     # If this flag is True, row-column are selected randomly, and E_local is
     # updated once before updating each row or column.
     # That is to say, if this flag is True, the two next flags are ignored
-    'update_temperature_after_each_row_col' : [False, True][1],
+    'update_temperature_after_each_row_col' : [False, True][0],
 
     # [asynchronous mode] [slow cooling] random versus sequentially
     # row and columns could be updated;
@@ -68,4 +68,4 @@ config['kT_start'], config['kT_step'], config['kT_end'] = [ (100, .9990, .0100),
                                                             (100, .9995, .0100),
                                                             (100, .9990, .0010),
                                                             (100, .9990, .0001),
-                                                            (100, .9980, .0010) ][2] #[0]
+                                                            (100, .9980, .0010) ][3] #[0]

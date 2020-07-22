@@ -59,12 +59,12 @@ while KT[-1] > config['kT_end']: KT.append( KT[-1] * config['kT_step'] )
 ########################################
 ################ Problem setting: Inputs
 ########################################
-if 1:
+if 0:
     m, n = 2, 4 # vehicles, tasks
     D = np.loadtxt('sample_data/deltaMat_2_4.txt', dtype=float, ndmin=2) # (delta) [transport] cost matrix
     T = np.array([0, 0, 438, 399, 487, 507, 0 , 0]) # time for [doing] each task
     
-if 0:
+if 1:
     m, n = 3, 6 # vehicles, tasks
     D = np.loadtxt('sample_data/deltaMat_3_6.txt', dtype=float, ndmin=2) # (delta) [transport] cost matrix
     T = np.array([0, 0, 0, 438, 599, 300, 421, 347, 557, 0, 0 , 0]) # time for [doing] each task
